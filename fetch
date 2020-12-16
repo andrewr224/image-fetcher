@@ -13,20 +13,27 @@ class Service
   end
 end
 
+class ErrorLogger
+  def log(error:)
+    puts error
+  end
+end
+
 class ImageFetcher < Service
-  def initialize(url:)
+  def initialize(url:, error_logger:)
     @url = url
+    @error_logger = error_logger
   end
 
   def call
     URI.parse(url).open.tap(&method(:save_image))
-  rescue URI::InvalidURIError
-    puts "URL '#{url}' is broken!"
+  rescue URI::InvalidURIError, OpenURI::HTTPError
+    error_logger.log(error: "URL '#{url}' is broken!")
   end
 
   private
 
-  attr_reader :url
+  attr_reader :url, :error_logger
 
   def save_image(image)
     File.open(file_name, "wb") do |file|
@@ -55,13 +62,17 @@ class ImageFetcherOrganizer < Service
   def fetch_for_file(filename)
     File.foreach(filename).map(&:strip).each(&method(:fetch_for_url))
   rescue Errno::ENOENT
-    puts "File '#{filename}' doesn't exist!"
+    error_logger.log(error: "File '#{filename}' doesn't exist!")
   rescue Errno::EPIPE
     exit
   end
 
   def fetch_for_url(url)
-    ImageFetcher.call(url: url)
+    ImageFetcher.call(url: url, error_logger: error_logger)
+  end
+
+  def error_logger
+    @error_logger ||= ErrorLogger.new
   end
 end
 
