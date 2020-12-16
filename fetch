@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+require "open-uri"
+
 File.join(Dir.home, '.rbrc').tap { |f| load f if File.exist?(f) }
 
 class Service
@@ -8,6 +10,32 @@ class Service
     new(*args).call.tap do |result|
       return yield(result) if block_given?
     end
+  end
+end
+
+class ImageFetcher < Service
+  def initialize(url:)
+    @url = url
+  end
+
+  def call
+    URI.parse(url).open.tap(&method(:save_image))
+  rescue URI::InvalidURIError
+    puts "URL '#{url}' is broken!"
+  end
+
+  private
+
+  attr_reader :url
+
+  def save_image(image)
+    File.open(file_name, "wb") do |file|
+      file.write(image.read)
+    end
+  end
+
+  def file_name
+    URI.parse(url).path.split('/').last
   end
 end
 
@@ -25,7 +53,7 @@ class ImageFetcherOrganizer < Service
   attr_reader :filenames
 
   def fetch_for_file(filename)
-    File.foreach(filename).each(&method(:fetch_for_url))
+    File.foreach(filename).map(&:strip).each(&method(:fetch_for_url))
   rescue Errno::ENOENT
     puts "File '#{filename}' doesn't exist!"
   rescue Errno::EPIPE
@@ -33,7 +61,7 @@ class ImageFetcherOrganizer < Service
   end
 
   def fetch_for_url(url)
-    puts url
+    ImageFetcher.call(url: url)
   end
 end
 
