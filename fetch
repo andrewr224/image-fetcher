@@ -1,79 +1,9 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require "open-uri"
+require "./lib/image_fetcher_organizer"
+require "./lib/error_logger"
 
-File.join(Dir.home, '.rbrc').tap { |f| load f if File.exist?(f) }
+error_logger = ErrorLogger.new
 
-class Service
-  def self.call(*args)
-    new(*args).call.tap do |result|
-      return yield(result) if block_given?
-    end
-  end
-end
-
-class ErrorLogger
-  def log(error:)
-    puts error
-  end
-end
-
-class ImageFetcher < Service
-  def initialize(url:, error_logger:)
-    @url = url
-    @error_logger = error_logger
-  end
-
-  def call
-    URI.parse(url).open.tap(&method(:save_image))
-  rescue URI::InvalidURIError, OpenURI::HTTPError
-    error_logger.log(error: "URL '#{url}' is broken!")
-  end
-
-  private
-
-  attr_reader :url, :error_logger
-
-  def save_image(image)
-    File.open(file_name, "wb") do |file|
-      file.write(image.read)
-    end
-  end
-
-  def file_name
-    URI.parse(url).path.split('/').last
-  end
-end
-
-class ImageFetcherOrganizer < Service
-  def initialize(filenames:)
-    @filenames = filenames
-  end
-
-  def call
-    filenames.each(&method(:fetch_for_file))
-  end
-
-  private
-
-  attr_reader :filenames
-
-  def fetch_for_file(filename)
-    File.foreach(filename).map(&:strip).each(&method(:fetch_for_url))
-  rescue Errno::ENOENT
-    error_logger.log(error: "File '#{filename}' doesn't exist!")
-  rescue Errno::EPIPE
-    exit
-  end
-
-  def fetch_for_url(url)
-    ImageFetcher.call(url: url, error_logger: error_logger)
-  end
-
-  def error_logger
-    @error_logger ||= ErrorLogger.new
-  end
-end
-
-ImageFetcherOrganizer.call(filenames: ARGV)
+ImageFetcherOrganizer.call(filenames: ARGV, error_logger: error_logger)
